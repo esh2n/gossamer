@@ -658,6 +658,20 @@ func (p PoV) Encode() ([]byte, error) {
 	return scale.Marshal(p)
 }
 
+// Hash returns the hash of the PoV
+func (p PoV) Hash() (common.Hash, error) {
+	bytes, err := scale.Marshal(p)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("marshalling PoV: %w", err)
+	}
+
+	return common.Blake2bHash(bytes)
+}
+
+func (p PoV) Encode() ([]byte, error) {
+	return scale.Marshal(p)
+}
+
 // NoSuchPoV indicates that the requested PoV was not found in the store.
 type NoSuchPoV struct{}
 
