@@ -4,7 +4,6 @@
 package candidatevalidation
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -168,50 +167,15 @@ func validateFromChainState(runtimeInstance parachainruntime.RuntimeInstance, po
 	// check that the candidate does not exceed any parameters in the persisted validation data
 	pov := povRequestor.RequestPoV(candidateReceipt.Descriptor.PovHash)
 
-	// basic checks
-
-	// check if encoded size of pov is less than max pov size
-	buffer := bytes.NewBuffer(nil)
-	encoder := scale.NewEncoder(buffer)
-	err = encoder.Encode(pov)
-	if err != nil {
-		return nil, nil, false, fmt.Errorf("encoding pov: %w", err)
-	}
-	encodedPoVSize := buffer.Len()
-	if encodedPoVSize > int(persistedValidationData.MaxPovSize) {
-		return nil, nil, false, fmt.Errorf("%w, limit: %d, got: %d", ErrValidationInputOverLimit,
-			persistedValidationData.MaxPovSize, encodedPoVSize)
-	}
-
-	validationCodeHash, err := common.Blake2bHash([]byte(*validationCode))
-	if err != nil {
-		return nil, nil, false, fmt.Errorf("hashing validation code: %w", err)
-	}
-
-	if validationCodeHash != common.Hash(candidateReceipt.Descriptor.ValidationCodeHash) {
-		return nil, nil, false, fmt.Errorf("%w, expected: %s, got %s", ErrValidationCodeMismatch,
-			candidateReceipt.Descriptor.ValidationCodeHash, validationCodeHash)
-	}
-
-	// check candidate signature
-	err = candidateReceipt.Descriptor.CheckCollatorSignature()
-	if err != nil {
-		return nil, nil, false, fmt.Errorf("verifying collator signature: %w", err)
-	}
-
-	validationParams := parachainruntime.ValidationParameters{
-		ParentHeadData:         persistedValidationData.ParentHead,
-		BlockData:              pov.BlockData,
-		RelayParentNumber:      persistedValidationData.RelayParentNumber,
-		RelayParentStorageRoot: persistedValidationData.RelayParentStorageRoot,
-	}
-
 	parachainRuntimeInstance, err := parachainruntime.SetupVM(*validationCode)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("setting up VM: %w", err)
 	}
 
-	validationResults, err := parachainRuntimeInstance.ValidateBlock(validationParams)
+	validationResults, err := validateFromExhaustive(parachainRuntimeInstance, *persistedValidationData,
+		*validationCode,
+		candidateReceipt, pov)
+
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("executing validate_block: %w", err)
 	}
