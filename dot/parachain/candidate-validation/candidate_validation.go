@@ -13,7 +13,6 @@ import (
 	parachaintypes "github.com/ChainSafe/gossamer/dot/parachain/types"
 	"github.com/ChainSafe/gossamer/internal/log"
 	"github.com/ChainSafe/gossamer/lib/common"
-	"github.com/ChainSafe/gossamer/pkg/scale"
 )
 
 var logger = log.NewFromGlobal(log.AddContext("pkg", "parachain-candidate-validation"))
@@ -159,12 +158,13 @@ func validateFromChainState(runtimeInstance parachainruntime.RuntimeInstance, po
 	candidateReceipt parachaintypes.CandidateReceipt) (
 	*parachaintypes.CandidateCommitments, *parachaintypes.PersistedValidationData, bool, error) {
 
-	persistedValidationData, validationCode, err := getValidationData(runtimeInstance, candidateReceipt.Descriptor.ParaID)
+	persistedValidationData, validationCode, err := getValidationData(runtimeInstance,
+		candidateReceipt.Descriptor.ParaID)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("getting validation data: %w", err)
 	}
 
-	// check that the candidate does not exceed any parameters in the persisted validation data
+	//check that the candidate does not exceed any parameters in the persisted validation data
 	pov := povRequestor.RequestPoV(candidateReceipt.Descriptor.PovHash)
 
 	parachainRuntimeInstance, err := parachainruntime.SetupVM(*validationCode)
@@ -180,22 +180,13 @@ func validateFromChainState(runtimeInstance parachainruntime.RuntimeInstance, po
 		return nil, nil, false, fmt.Errorf("executing validate_block: %w", err)
 	}
 
-	candidateCommitments := parachaintypes.CandidateCommitments{
-		UpwardMessages:            validationResults.UpwardMessages,
-		HorizontalMessages:        validationResults.HorizontalMessages,
-		NewValidationCode:         validationResults.NewValidationCode,
-		HeadData:                  validationResults.HeadData,
-		ProcessedDownwardMessages: validationResults.ProcessedDownwardMessages,
-		HrmpWatermark:             validationResults.HrmpWatermark,
-	}
-
 	isValid, err := runtimeInstance.ParachainHostCheckValidationOutputs(
-		candidateReceipt.Descriptor.ParaID, candidateCommitments)
+		candidateReceipt.Descriptor.ParaID, validationResults.ValidResult.CandidateCommitments)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("executing validate_block: %w", err)
 	}
 
-	return &candidateCommitments, persistedValidationData, isValid, nil
+	return &validationResults.ValidResult.CandidateCommitments, persistedValidationData, isValid, nil
 }
 
 // validateFromExhaustive validates a candidate parachain block with provided parameters

@@ -415,15 +415,6 @@ type HeadData struct {
 	Data []byte `scale:"1"`
 }
 
-func (hd HeadData) Hash() (common.Hash, error) {
-	bytes, err := scale.Marshal(hd)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("marshalling HeadData: %w", err)
-	}
-
-	return common.Blake2bHash(bytes)
-}
-
 // CoreIndex The unique (during session) index of a core.
 type CoreIndex struct {
 	Index uint32 `scale:"1"`
@@ -667,20 +658,6 @@ func (p PoV) Encode() ([]byte, error) {
 	return scale.Marshal(p)
 }
 
-// Hash returns the hash of the PoV
-func (p PoV) Hash() (common.Hash, error) {
-	bytes, err := scale.Marshal(p)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("marshalling PoV: %w", err)
-	}
-
-	return common.Blake2bHash(bytes)
-}
-
-func (p PoV) Encode() ([]byte, error) {
-	return scale.Marshal(p)
-}
-
 // NoSuchPoV indicates that the requested PoV was not found in the store.
 type NoSuchPoV struct{}
 
@@ -757,43 +734,3 @@ type Subsystem interface {
 	ProcessBlockFinalizedSignal(BlockFinalizedSignal) error
 	Stop()
 }
-
-// CandidateHash makes it easy to enforce that a hash is a candidate hash on the type level.
-type CandidateHash struct {
-	Value common.Hash `scale:"1"`
-}
-
-// PoV represents a Proof-of-Validity block (PoV block) or a parachain block.
-// It contains the necessary data for the parachain specific state transition logic.
-type PoV struct {
-	BlockData BlockData `scale:"1"`
-}
-
-// Index returns the index of varying data type
-func (PoV) Index() uint {
-	return 0
-}
-
-// NoSuchPoV indicates that the requested PoV was not found in the store.
-type NoSuchPoV struct{}
-
-// Index returns the index of varying data type
-func (NoSuchPoV) Index() uint {
-	return 1
-}
-
-// BlockData represents parachain block data.
-// It contains everything required to validate para-block, may contain block and witness data.
-type BlockData []byte
-
-// Collation represents a requested collation to be delivered
-type Collation struct {
-	CandidateReceipt CandidateReceipt `scale:"1"`
-	PoV              PoV              `scale:"2"`
-}
-
-// ValidatorSignature represents the signature with which parachain validators sign blocks.
-type ValidatorSignature Signature
-
-// Signature represents a cryptographic signature.
-type Signature [64]byte
