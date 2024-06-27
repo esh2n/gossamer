@@ -30,6 +30,7 @@ type CandidateValidation struct {
 	SubsystemToOverseer chan<- any
 	OverseerToSubsystem <-chan any
 	ValidationHost      parachainruntime.ValidationHost
+	RuntimeInstance     parachainruntime.RuntimeInstance
 }
 
 // NewCandidateValidation creates a new CandidateValidation subsystem
@@ -78,7 +79,18 @@ func (cv *CandidateValidation) processMessages(wg *sync.WaitGroup) {
 			logger.Debugf("received message %v", msg)
 			switch msg := msg.(type) {
 			case ValidateFromChainState:
-				// TODO: implement functionality to handle ValidateFromChainState, see issue #3919
+				result, err := validateFromChainState(cv.RuntimeInstance, msg.Pov, msg.CandidateReceipt)
+				if err != nil {
+					logger.Errorf("failed to validate from chain state: %w", err)
+					msg.Ch <- parachaintypes.OverseerFuncRes[ValidationResult]{
+						Data: *result,
+						Err:  err,
+					}
+				} else {
+					msg.Ch <- parachaintypes.OverseerFuncRes[ValidationResult]{
+						Data: *result,
+					}
+				}
 			case ValidateFromExhaustive:
 				result, err := validateFromExhaustive(cv.ValidationHost, msg.PersistedValidationData,
 					msg.ValidationCode, msg.CandidateReceipt, msg.PoV)
@@ -154,39 +166,26 @@ func getValidationData(runtimeInstance parachainruntime.RuntimeInstance, paraID 
 
 // validateFromChainState validates a candidate parachain block with provided parameters using relay-chain
 // state and using the parachain runtime.
-func validateFromChainState(runtimeInstance parachainruntime.RuntimeInstance, povRequestor PoVRequestor,
+func validateFromChainState(runtimeInstance parachainruntime.RuntimeInstance, pov parachaintypes.PoV,
 	candidateReceipt parachaintypes.CandidateReceipt) (
-	*parachaintypes.CandidateCommitments, *parachaintypes.PersistedValidationData, bool, error) {
+	*ValidationResult, error) {
 
 	persistedValidationData, validationCode, err := getValidationData(runtimeInstance,
 		candidateReceipt.Descriptor.ParaID)
 	if err != nil {
-		return nil, nil, false, fmt.Errorf("getting validation data: %w", err)
+		return nil, fmt.Errorf("getting validation data: %w", err)
 	}
-
-	//check that the candidate does not exceed any parameters in the persisted validation data
-	pov := povRequestor.RequestPoV(candidateReceipt.Descriptor.PovHash)
 
 	parachainRuntimeInstance, err := parachainruntime.SetupVM(*validationCode)
 	if err != nil {
-		return nil, nil, false, fmt.Errorf("setting up VM: %w", err)
+		return nil, fmt.Errorf("setting up VM: %w", err)
 	}
 
 	validationResults, err := validateFromExhaustive(parachainRuntimeInstance, *persistedValidationData,
 		*validationCode,
 		candidateReceipt, pov)
 
-	if err != nil {
-		return nil, nil, false, fmt.Errorf("executing validate_block: %w", err)
-	}
-
-	isValid, err := runtimeInstance.ParachainHostCheckValidationOutputs(
-		candidateReceipt.Descriptor.ParaID, validationResults.ValidResult.CandidateCommitments)
-	if err != nil {
-		return nil, nil, false, fmt.Errorf("executing validate_block: %w", err)
-	}
-
-	return &validationResults.ValidResult.CandidateCommitments, persistedValidationData, isValid, nil
+	return validationResults, err
 }
 
 // validateFromExhaustive validates a candidate parachain block with provided parameters
